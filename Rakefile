@@ -71,7 +71,7 @@ namespace :build do
   desc "Builds an additional feature for the configured training data set."
   task :additional_feature do
     feature = ENV['NAME']
-    index_file = Wikipedia::VandalismDetection.configuration["training_corpus"]["index_file"]
+    index_file = Wikipedia::VandalismDetection.configuration.training_corpus_index_file
     Rake::Task['build:corpus_index'].invoke unless File.exists?(index_file)
 
     Wikipedia::VandalismDetection::TrainingDataset.add_feature_to_arff!(feature)
@@ -92,36 +92,61 @@ namespace :build do
   # Creates PRC data for the configured classifier on the configured dataset
   #
   # @example
-  #   rake build:prd_data
-  #   rake build:prc_data EQUALLY_DISTRIBUTED=true
+  #   rake build:performance_data # default sample number is 100
+  #   rake build:performance_data SAMPLES=150
   #
-  desc "Create Performance curve data (PRC) for classifier"
-  task :prc_data do
-    data_file = Wikipedia::VandalismDetection.configuration["training_corpus"]["arff_file"]
-    Rake::Task['build:features'].invoke unless File.exists?(data_file)
+  desc "Create performance curve data (PRC & ROC) for classifier on testset"
+  task :performance_data do
+    sample_count = ENV['SAMPLES']
 
-    classifier = Wikipedia::VandalismDetection::Classifier.new
-    equally_distributed = ENV['EQUALLY_DISTRIBUTED'] == 'true'
+    evaluator = Wikipedia::VandalismDetection::Classifier.new.evaluator
+    performance_data = evaluator.evaluate_testcorpus_classification(sample_count: sample_count)
 
-    source_dir = Wikipedia::VandalismDetection.configuration['source']
-    evaluations_dir = "#{source_dir}/build/evaluations"
-    time = Time.now.strftime("%Y-%m-%d_%H-%M-%S")
-    classifier_type = Wikipedia::VandalismDetection.configuration["classifier"]["type"]
+    recall_values = performance_data[:recalls]
+    precision_values = performance_data[:precisions]
+    fp_rate_values = performance_data[:fp_rates]
+    auprc = performance_data[:auprc]
+    auroc = performance_data[:auroc]
+    total_recall = performance_data[:total_recall]
+    total_precision = performance_data[:total_precision]
 
-    curve = classifier.evaluator.curve_data(equally_distributed: equally_distributed)
-    auprc = curve[:area_under_prc]
+    config = Wikipedia::VandalismDetection.configuration
 
-    FileUtils.mkdir_p(evaluations_dir) unless Dir.exists?(evaluations_dir)
-    prc_file = "#{evaluations_dir}/evaluation-#{time}-#{classifier_type}-#{auprc}.csv"
-    puts "saving PRC data to #{prc_file}..."
+    classifier_type = config.classifier_type.split('::').last
+    auprc_file_name = "#{classifier_type}-prc-#{auprc.round}_p#{total_precision}-r#{total_recall}.txt"
+    auroc_file_name = "#{classifier_type}-roc-#{auroc.round}_p#{total_precision}-r#{total_recall}.txt"
 
-    points = (0...curve[:precision].count).map { |index| [curve[:precision][index], curve[:recall][index]] }
+    # open files
+    puts "working in #{config.output_base_directory}"
+    auprc_file = File.open(File.join(config.output_base_directory, auprc_file_name))
+    auroc_file = File.open(File.join(config.output_base_directory, auroc_file_name))
 
-    CSV.open(prc_file, 'w') do |file|
-      points.each do |p|
-        file << p
-      end
+    sorted_prc = evaluator.sort_curve_values(recall_values, precision_values)
+    sorted_roc = evaluator.sort_curve_values(fp_rate_values, recall_values)
+
+    # write to prc file
+    puts "writing #{auprc_file_name}..."
+    prc_x = sorted_prc[:x]
+    prc_y = sorted_prc[:y]
+
+    prc_x.each_with_index do |x, index|
+      auprc_file.puts [x, prc_y[index]].join(',')
     end
+
+    # write to roc file
+    puts "writing #{auroc_file_name}..."
+    roc_x = sorted_roc[:x]
+    roc_y = sorted_roc[:y]
+
+    roc_x.each_with_index do |x, index|
+      auroc_file.puts [x, roc_y[index]].join(',')
+    end
+
+    # close files
+    auprc_file.close
+    auroc_file.close
+
+    puts "done :)"
   end
 end
 
