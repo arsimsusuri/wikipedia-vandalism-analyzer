@@ -98,6 +98,7 @@ namespace :build do
   desc "Create performance curve data (PRC & ROC) for classifier on testset"
   task :performance_data do
     sample_count = ENV['SAMPLES']
+    sample_count = sample_count.to_i if sample_count
 
     evaluator = Wikipedia::VandalismDetection::Classifier.new.evaluator
     performance_data = evaluator.evaluate_testcorpus_classification(sample_count: sample_count)
@@ -105,46 +106,61 @@ namespace :build do
     recall_values = performance_data[:recalls]
     precision_values = performance_data[:precisions]
     fp_rate_values = performance_data[:fp_rates]
-    auprc = performance_data[:auprc]
-    auroc = performance_data[:auroc]
-    total_recall = performance_data[:total_recall]
-    total_precision = performance_data[:total_precision]
+    auprc = performance_data[:auprc].round(3)
+    auroc = performance_data[:auroc].round(3)
+    total_recall = performance_data[:total_recall].round(3)
+    total_precision = performance_data[:total_precision].round(3)
 
     config = Wikipedia::VandalismDetection.configuration
 
     classifier_type = config.classifier_type.split('::').last
-    auprc_file_name = "#{classifier_type}-prc-#{auprc.round}_p#{total_precision}-r#{total_recall}.txt"
-    auroc_file_name = "#{classifier_type}-roc-#{auroc.round}_p#{total_precision}-r#{total_recall}.txt"
+    prc_file_name = "#{classifier_type}-prc-#{auprc}_p#{total_precision}-r#{total_recall}.txt"
+    roc_file_name = "#{classifier_type}-roc-#{auroc}_p#{total_precision}-r#{total_recall}.txt"
 
     # open files
     puts "working in #{config.output_base_directory}"
-    auprc_file = File.open(File.join(config.output_base_directory, auprc_file_name))
-    auroc_file = File.open(File.join(config.output_base_directory, auroc_file_name))
+    prc_file = File.open(File.join(config.output_base_directory, prc_file_name), 'w')
+    roc_file = File.open(File.join(config.output_base_directory, roc_file_name), 'w')
 
     sorted_prc = evaluator.sort_curve_values(recall_values, precision_values)
     sorted_roc = evaluator.sort_curve_values(fp_rate_values, recall_values)
 
     # write to prc file
-    puts "writing #{auprc_file_name}..."
+    puts "writing #{prc_file_name}..."
     prc_x = sorted_prc[:x]
     prc_y = sorted_prc[:y]
 
     prc_x.each_with_index do |x, index|
-      auprc_file.puts [x, prc_y[index]].join(',')
+      prc_file.puts [x, prc_y[index]].join(',')
     end
 
     # write to roc file
-    puts "writing #{auroc_file_name}..."
+    puts "writing #{roc_file_name}..."
     roc_x = sorted_roc[:x]
     roc_y = sorted_roc[:y]
 
     roc_x.each_with_index do |x, index|
-      auroc_file.puts [x, roc_y[index]].join(',')
+      roc_file.puts [x, roc_y[index]].join(',')
     end
 
     # close files
-    auprc_file.close
-    auroc_file.close
+    prc_file.close
+    roc_file.close
+
+    # plotting curves
+    plot_file = File.expand_path('../scripts/plot_curve', __FILE__)
+
+    puts "plotting PR curve..."
+    prc_file_path = File.join(config.output_base_directory, prc_file_name)
+    prc_output_file = File.join(config.output_base_directory, prc_file_name.gsub('txt', 'pdf'))
+    prc_plot_title = "PRC (#{classifier_type}) | AUC = #{auprc}, Precision = #{total_precision}, Recall = #{total_recall}"
+    system "#{plot_file} #{prc_file_path} #{prc_output_file} Recall Precision '#{prc_plot_title}'"
+
+    puts "plotting RO curve..."
+    roc_file_path = File.join(config.output_base_directory, roc_file_name)
+    roc_output_file = File.join(config.output_base_directory, roc_file_name.gsub('txt', 'pdf'))
+    roc_plot_title = "ROC (#{classifier_type}) | AUC = #{auroc}, #{classifier_type} - "
+    system "#{plot_file}  #{roc_file_path} #{roc_output_file} 'FP Rate' 'TP Rate' '#{roc_plot_title}'"
 
     puts "done :)"
   end
