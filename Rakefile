@@ -110,21 +110,27 @@ namespace :build do
     recall_values = performance_data[:recalls]
     precision_values = performance_data[:precisions]
     fp_rate_values = performance_data[:fp_rates]
-    auprc = performance_data[:auprc].round(3)
-    auroc = performance_data[:auroc].round(3)
+    aucpr = performance_data[:auprc].round(3)
+    aucro = performance_data[:auroc].round(3)
     total_recall = performance_data[:total_recall].round(3)
     total_precision = performance_data[:total_precision].round(3)
 
     config = Wikipedia::VandalismDetection.configuration
 
-    classifier_type = config.classifier_type.split('::').last
-    prc_file_name = "#{classifier_type}-prc-#{auprc.to_s.gsub('.','')}_p#{total_precision.to_s.gsub('.','')}-r#{total_recall.to_s.gsub('.','')}.txt"
-    roc_file_name = "#{classifier_type}-roc-#{auroc.to_s.gsub('.','')}_p#{total_precision.to_s.gsub('.','')}-r#{total_recall.to_s.gsub('.','')}.txt"
+    classifier_type = config.classifier_type.split('::').last.downcase
+    uniform = config.uniform_training_data?
+    training_type = uniform ? 'uniform' : 'all-samples'
+
+    sub_dir = File.join(config.output_base_directory, classifier_type, training_type)
+    FileUtils.mkdir_p(sub_dir)
+
+    prc_file_name = "#{classifier_type}-prc-#{aucpr.to_s.gsub('.','')}_p#{total_precision.to_s.gsub('.','')}-r#{total_recall.to_s.gsub('.','')}.txt"
+    roc_file_name = "#{classifier_type}-roc-#{aucro.to_s.gsub('.','')}_p#{total_precision.to_s.gsub('.','')}-r#{total_recall.to_s.gsub('.','')}.txt"
 
     # open files
     puts "working in #{config.output_base_directory}"
-    prc_file = File.open(File.join(config.output_base_directory, prc_file_name), 'w')
-    roc_file = File.open(File.join(config.output_base_directory, roc_file_name), 'w')
+    prc_file = File.open(File.join(sub_dir, prc_file_name), 'w')
+    roc_file = File.open(File.join(sub_dir, roc_file_name), 'w')
 
     sorted_prc = evaluator.sort_curve_values(recall_values, precision_values)
     sorted_roc = evaluator.sort_curve_values(fp_rate_values, recall_values)
@@ -155,15 +161,15 @@ namespace :build do
     plot_file = File.expand_path('../scripts/plot_curve', __FILE__)
 
     puts "plotting PR curve..."
-    prc_file_path = File.join(config.output_base_directory, prc_file_name)
-    prc_output_file = File.join(config.output_base_directory, prc_file_name.gsub('.txt', ''))
-    prc_plot_title = "PRC (#{classifier_type}) | AUC = #{auprc}, Precision = #{total_precision}, Recall = #{total_recall}"
+    prc_file_path = File.join(sub_dir, prc_file_name)
+    prc_output_file = File.join(sub_dir, prc_file_name.gsub('.txt', ''))
+    prc_plot_title = "PRC (#{classifier_type}) | AUC = #{aucpr}, Precision = #{total_precision}, Recall = #{total_recall}"
     system "#{plot_file} #{prc_file_path} #{prc_output_file} Recall Precision '#{prc_plot_title}'"
 
     puts "plotting RO curve..."
-    roc_file_path = File.join(config.output_base_directory, roc_file_name)
-    roc_output_file = File.join(config.output_base_directory, roc_file_name.gsub('.txt', ''))
-    roc_plot_title = "ROC (#{classifier_type}) | AUC = #{auroc}"
+    roc_file_path = File.join(sub_dir, roc_file_name)
+    roc_output_file = File.join(sub_dir, roc_file_name.gsub('.txt', ''))
+    roc_plot_title = "ROC (#{classifier_type}) | AUC = #{aucro}"
     system "#{plot_file}  #{roc_file_path} #{roc_output_file} 'FP Rate' 'TP Rate' '#{roc_plot_title}'"
 
     puts "done :)"
