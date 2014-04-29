@@ -2,14 +2,14 @@
 
 # Arguments are:
 # $1 - file name
-# $2 - pdf output file name
+# $2 - output file name
 # $3 - x axis label
 # $4 - y axis label
 # $5 - plot title
 
 gnuplot << EOF
-set term postscript
-set output "$2"
+set term postscript portrait
+set output "$2.ps"
 
 set xlabel "$3"
 set ylabel "$4"
@@ -25,8 +25,11 @@ set yrange [0.0:1.0]
 
 plot '$1' notitle with lines lw 2 lt rgb "#555555"
 set output
-
 EOF
+
+epstopdf $2.ps
+pdfcrop $2.pdf
+mv $2-crop.pdf $2.pdf
 
 
 

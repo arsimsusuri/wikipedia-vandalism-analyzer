@@ -100,7 +100,11 @@ namespace :build do
     sample_count = ENV['SAMPLES']
     sample_count = sample_count.to_i if sample_count
 
-    evaluator = Wikipedia::VandalismDetection::Classifier.new.evaluator
+    classifier = Wikipedia::VandalismDetection::Classifier.new
+    evaluator = classifier.evaluator
+
+    puts "#{classifier.dataset.n_rows} instances in training set."
+
     performance_data = evaluator.evaluate_testcorpus_classification(sample_count: sample_count)
 
     recall_values = performance_data[:recalls]
@@ -114,8 +118,8 @@ namespace :build do
     config = Wikipedia::VandalismDetection.configuration
 
     classifier_type = config.classifier_type.split('::').last
-    prc_file_name = "#{classifier_type}-prc-#{auprc}_p#{total_precision}-r#{total_recall}.txt"
-    roc_file_name = "#{classifier_type}-roc-#{auroc}_p#{total_precision}-r#{total_recall}.txt"
+    prc_file_name = "#{classifier_type}-prc-#{auprc.to_s.gsub('.','')}_p#{total_precision.to_s.gsub('.','')}-r#{total_recall.to_s.gsub('.','')}.txt"
+    roc_file_name = "#{classifier_type}-roc-#{auroc.to_s.gsub('.','')}_p#{total_precision.to_s.gsub('.','')}-r#{total_recall.to_s.gsub('.','')}.txt"
 
     # open files
     puts "working in #{config.output_base_directory}"
@@ -152,14 +156,14 @@ namespace :build do
 
     puts "plotting PR curve..."
     prc_file_path = File.join(config.output_base_directory, prc_file_name)
-    prc_output_file = File.join(config.output_base_directory, prc_file_name.gsub('txt', 'pdf'))
+    prc_output_file = File.join(config.output_base_directory, prc_file_name.gsub('.txt', ''))
     prc_plot_title = "PRC (#{classifier_type}) | AUC = #{auprc}, Precision = #{total_precision}, Recall = #{total_recall}"
     system "#{plot_file} #{prc_file_path} #{prc_output_file} Recall Precision '#{prc_plot_title}'"
 
     puts "plotting RO curve..."
     roc_file_path = File.join(config.output_base_directory, roc_file_name)
-    roc_output_file = File.join(config.output_base_directory, roc_file_name.gsub('txt', 'pdf'))
-    roc_plot_title = "ROC (#{classifier_type}) | AUC = #{auroc}, #{classifier_type} - "
+    roc_output_file = File.join(config.output_base_directory, roc_file_name.gsub('.txt', ''))
+    roc_plot_title = "ROC (#{classifier_type}) | AUC = #{auroc}"
     system "#{plot_file}  #{roc_file_path} #{roc_output_file} 'FP Rate' 'TP Rate' '#{roc_plot_title}'"
 
     puts "done :)"
