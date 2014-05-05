@@ -23,7 +23,7 @@ set grid
 set xrange [0.0:1.0]
 set yrange [0.0:1.0]
 
-plot '$1' notitle with lines lw 2 lt rgb "#555555"
+plot '$1' notitle with lines lw 4 lt rgb "#555555"
 set output
 EOF
 
