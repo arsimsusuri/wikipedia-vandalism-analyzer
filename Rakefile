@@ -55,38 +55,19 @@ namespace :build do
   # Creates the configured features for the configured training corpus
   #
   # @example
-  #  rake build:features
+  #  rake build:training_features
   desc "Builds the configured features for the configured training data set. See conf/config.yml!"
-  task :features do
+  task :training_features do
     Wikipedia::VandalismDetection::TrainingDataset.build!
   end
 
-  # Creates an additional feature for the configured training corpus.
-  # The feature attribute and values are added to the arff file.
+  # Creates the configured features for the configured test corpus
   #
   # @example
-  #  rake build:additional_feature NAME=compressibility
-  #  rake build:additional_feature NAME='size ratio'
-  #
-  desc "Builds an additional feature for the configured training data set."
-  task :additional_feature do
-    feature = ENV['NAME']
-    index_file = Wikipedia::VandalismDetection.configuration.training_corpus_index_file
-    Rake::Task['build:corpus_index'].invoke unless File.exists?(index_file)
-
-    Wikipedia::VandalismDetection::TrainingDataset.add_feature_to_arff!(feature)
-  end
-
-  task :all_features do
-    features = Wikipedia::VandalismDetection::Configuration::DEFAULTS['features']
-    first = features.shift
-
-    Wikipedia::VandalismDetection::Configuration::DEFAULTS['features'] = first
-    Wikipedia::VandalismDetection::TrainingDataset.build!
-
-    features.each do |feature|
-      Wikipedia::VandalismDetection::TrainingDataset.add_feature_to_arff!(feature)
-    end
+  #  rake build:test_features
+  desc "Builds the configured features for the configured test data set. See conf/config.yml!"
+  task :test_features do
+    Wikipedia::VandalismDetection::TestDataset.build!
   end
 
   # Creates PRC data for the configured classifier on the configured dataset
@@ -95,7 +76,7 @@ namespace :build do
   #   rake build:performance_data # default sample number is 100
   #   rake build:performance_data SAMPLES=150
   #
-  desc "Create performance curve data (PRC & ROC) for classifier on testset"
+  desc "Create performance curve data (PR & ROC curves) for classifier on testset"
   task :performance_data do
     sample_count = ENV['SAMPLES']
     sample_count = sample_count.to_i if sample_count
@@ -110,8 +91,8 @@ namespace :build do
     recall_values = performance_data[:recalls]
     precision_values = performance_data[:precisions]
     fp_rate_values = performance_data[:fp_rates]
-    aucpr = performance_data[:auprc].round(3)
-    aucro = performance_data[:auroc].round(3)
+    pr_auc = performance_data[:pr_auc].round(3)
+    roc_auc = performance_data[:roc_auc].round(3)
     total_recall = performance_data[:total_recall].round(3)
     total_precision = performance_data[:total_precision].round(3)
 
@@ -124,16 +105,16 @@ namespace :build do
     sub_dir = File.join(config.output_base_directory, classifier_type, training_type)
     FileUtils.mkdir_p(sub_dir)
 
-    prc_file_name = "#{classifier_type}-prc-#{aucpr.to_s.gsub('.','')}_p#{total_precision.to_s.gsub('.','')}-r#{total_recall.to_s.gsub('.','')}.txt"
-    roc_file_name = "#{classifier_type}-roc-#{aucro.to_s.gsub('.','')}_p#{total_precision.to_s.gsub('.','')}-r#{total_recall.to_s.gsub('.','')}.txt"
+    prc_file_name = "#{classifier_type}-pr-#{pr_auc.to_s.gsub('.','')}_p#{total_precision.to_s.gsub('.','')}-r#{total_recall.to_s.gsub('.','')}.txt"
+    rocc_file_name = "#{classifier_type}-roc-#{roc_auc.to_s.gsub('.','')}_p#{total_precision.to_s.gsub('.','')}-r#{total_recall.to_s.gsub('.','')}.txt"
 
     # open files
     puts "working in #{config.output_base_directory}"
     prc_file = File.open(File.join(sub_dir, prc_file_name), 'w')
-    roc_file = File.open(File.join(sub_dir, roc_file_name), 'w')
+    rocc_file = File.open(File.join(sub_dir, rocc_file_name), 'w')
 
     sorted_prc = evaluator.sort_curve_values(recall_values, precision_values)
-    sorted_roc = evaluator.sort_curve_values(fp_rate_values, recall_values)
+    sorted_rocc = evaluator.sort_curve_values(fp_rate_values, recall_values)
 
     # write to prc file
     puts "writing #{prc_file_name}..."
@@ -145,17 +126,17 @@ namespace :build do
     end
 
     # write to roc file
-    puts "writing #{roc_file_name}..."
-    roc_x = sorted_roc[:x]
-    roc_y = sorted_roc[:y]
+    puts "writing #{rocc_file_name}..."
+    rocc_x = sorted_rocc[:x]
+    rocc_y = sorted_rocc[:y]
 
-    roc_x.each_with_index do |x, index|
-      roc_file.puts [x, roc_y[index]].join(',')
+    rocc_x.each_with_index do |x, index|
+      rocc_file.puts [x, rocc_y[index]].join(',')
     end
 
     # close files
     prc_file.close
-    roc_file.close
+    rocc_file.close
 
     # plotting curves
     plot_file = File.expand_path('../scripts/plot_curve', __FILE__)
@@ -163,14 +144,14 @@ namespace :build do
     puts "plotting PR curve..."
     prc_file_path = File.join(sub_dir, prc_file_name)
     prc_output_file = File.join(sub_dir, prc_file_name.gsub('.txt', ''))
-    prc_plot_title = "PRC (#{classifier_type}) | AUC = #{aucpr}, Precision = #{total_precision}, Recall = #{total_recall}"
+    prc_plot_title = "PR (#{classifier_type}) | AUC = #{pr_auc}, Precision = #{total_precision}, Recall = #{total_recall}"
     system "#{plot_file} #{prc_file_path} #{prc_output_file} Recall Precision '#{prc_plot_title}'"
 
     puts "plotting RO curve..."
-    roc_file_path = File.join(sub_dir, roc_file_name)
-    roc_output_file = File.join(sub_dir, roc_file_name.gsub('.txt', ''))
-    roc_plot_title = "ROC (#{classifier_type}) | AUC = #{aucro}"
-    system "#{plot_file}  #{roc_file_path} #{roc_output_file} 'FP Rate' 'TP Rate' '#{roc_plot_title}'"
+    rocc_file_path = File.join(sub_dir, rocc_file_name)
+    rocc_output_file = File.join(sub_dir, rocc_file_name.gsub('.txt', ''))
+    rocc_plot_title = "ROC (#{classifier_type}) | AUC = #{roc_auc}"
+    system "#{plot_file}  #{rocc_file_path} #{rocc_output_file} 'FP Rate' 'TP Rate' '#{rocc_plot_title}'"
 
     puts "done :)"
   end

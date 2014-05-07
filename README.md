@@ -67,17 +67,12 @@ An example config file content could be:
 
     $ rake build:corpus_index
 
-**Building the training dataset ARFF file (features for corpus data):**
+**Building the training and test dataset ARFF file (features for corpus data):**
 
-    $ rake build:features
+    $ rake build:training_features
+    $ rake build:test_features
 
-**Add a feature to the existing ARFF file:**
-
-    # Make sure the feature to add is not yet in the config's feature list.
-    $ rake build:additional_feature NAME='feature name'
-    # Then add the features name to the feature list
-
-**Build the configured classifiers performance curve data and plots (PRC and ROC):**
+**Build the configured classifiers performance curve data and plots (PR-curve and ROC-curve):**
 
     $ rake build:performance_data
 
