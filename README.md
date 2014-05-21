@@ -86,16 +86,30 @@ This creates all needed data (index and ARFF files) for configured features from
  `<output_base_directory>/randomforest/all-samples/`
  - for classifier `Trees:RandomForest` using uniform distributed training set it will save plots and curve files to
     `<output_base_directory>/randomforest/uniform/`
+    
+**Building prediction analysis data for configured features:**
 
-Evaluate the configured classifier (over all samples):
+    $ rake build:feature_analysis
+    
+This task creates csv-files with each feature's prediction data. These files are used in the 
+`build:feature_analysis_plots` task.
+    
+**Plotting the feature analysis data to pdf curve files:**
+ 
+    $ rake build:feature_analysis_plots
+    
+This rake task produces gnuplot plots as cropped pdf files. Curves are created for absolute and normalized 
+prediction data. This task runs the `build:feature_analysis` task if the data is not yet avaliable.
+
+**Evaluate the configured classifier (over all samples):**
 
     $ rake classifier_evaluation
 
-Evaluate the configured classifier with equally distributed (down-sampled) datasets:
+**Evaluate the configured classifier with equally distributed (down-sampled) datasets:**
 
     $ rake classifier_evaluation EQUALLY_DISTRIBUTED=true
 
-Classify Wikipedia pages in xml format:
+**Classify Wikipedia pages in xml format:**
 
     $ rake classify FILE=file_name.xml
 
