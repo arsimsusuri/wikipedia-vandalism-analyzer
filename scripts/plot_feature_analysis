@@ -1,0 +1,44 @@
+#!/bin/sh
+
+# Arguments are:
+# $1 - file name
+# $2 - output file name
+# $3 - x axis label
+# $4 - y axis label
+# $5 - plot title
+
+gnuplot << EOF
+set term postscript portrait
+set output "$2.ps"
+
+set xlabel "$3"
+set ylabel "$4"
+set title "$5"
+set datafile separator ','
+set size ratio 1
+set key outside
+#set xtics .1
+#set ytics .1
+set grid
+# set xrange [0.0:1.0]
+# set yrange [0.0:1.0]
+
+set style line 1 lt 1 lc rgb "#225ea8" lw 5
+set style line 2 lt 2 lc rgb "#e31a1c" lw 5
+set style line 3 lt 3 lc rgb "#fd8d3c" lw 5
+set style line 4 lt 5 lc rgb "#41b6c4" lw 5
+
+plot '$1' using 1:2 with lines ls 1 title "TP", \
+ "" using 1:3 ls 2 with lines title "TN", \
+ "" using 1:4 ls 3 with lines title "FP", \
+ "" using 1:5 ls 4 with lines title "FN"
+set output
+EOF
+
+epstopdf "$2.ps"
+pdfcrop "$2.pdf"
+mv "$2-crop.pdf" "$2.pdf"
+rm "$2.ps"
+
+
+
