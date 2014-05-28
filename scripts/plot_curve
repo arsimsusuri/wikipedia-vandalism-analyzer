@@ -30,6 +30,7 @@ EOF
 epstopdf $2.ps
 pdfcrop $2.pdf
 mv $2-crop.pdf $2.pdf
+rm "$2.ps"
 
 
 
