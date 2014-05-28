@@ -99,8 +99,7 @@ namespace :build do
     config = Wikipedia::VandalismDetection.configuration
 
     classifier_type = config.classifier_type.split('::').last.downcase
-    uniform = config.uniform_training_data?
-    training_type = uniform ? 'uniform' : 'all-samples'
+    training_type = config.training_data_options
 
     sub_dir = File.join(config.output_base_directory, classifier_type, training_type)
     FileUtils.mkdir_p(sub_dir)
@@ -167,7 +166,8 @@ namespace :build do
 
     config = Wikipedia::VandalismDetection.configuration
     classifier_name = config.classifier_type.split('::').last.downcase
-    path = File.join(config.output_base_directory, classifier_name, 'feature_analysis')
+    subdir_name = config.uniform_training_data? ? 'feature_analysis_balanced' : 'feature_analysis_unbalanced'
+    path = File.join(config.output_base_directory, classifier_name, subdir_name)
 
     FileUtils.mkdir_p(path) unless Dir.exists?(path)
     analysis_bin_file = File.join(path, 'analysis_hash')
@@ -257,7 +257,8 @@ namespace :build do
   task :feature_analysis_plots do
     config = Wikipedia::VandalismDetection.configuration
     classifier_name = config.classifier_type.split('::').last.downcase
-    path = File.join(config.output_base_directory, classifier_name, 'feature_analysis')
+    subdir_name = config.uniform_training_data? ? 'feature_analysis_balanced' : 'feature_analysis_unbalanced'
+    path = File.join(config.output_base_directory, classifier_name, subdir_name)
     output_path = File.join(path, 'plots')
 
     FileUtils.mkdir_p(output_path) unless Dir.exists?(output_path)
@@ -271,14 +272,147 @@ namespace :build do
       feature_name = File.basename(file).gsub('.csv', '')
       output_file_path = File.join(output_path, feature_name)
 
-      plot_title = "prediction analysis: #{feature_name} (#{classifier_name})"
+      plot_title = "prediction analysis: #{feature_name.gsub('normalized_', '')} (#{classifier_name})"
       x_label = 'Threshold'
-      y_label = file =~ 'normalized' ? 'Number of instances (normalized to 1)' : 'Number of instances'
+      y_label = (file =~ /normalized/) ? 'Number of instances (normalized to 1)' : 'Number of instances'
 
       system "'#{plot_file}' '#{file}' '#{output_file_path}' '#{x_label}' '#{y_label}' '#{plot_title}'"
     end
 
     puts "done :)"
+  end
+
+  # Builds the full classifier prediction data analysis
+  #
+  # @example
+  #   rake build:classifier_analysis
+  desc "Creates analysis files similar to feature analysis tasl but for full combined feature set"
+  task :classifier_analysis do
+    dataset = Wikipedia::VandalismDetection::Instances.empty_for_feature('anonymity')
+    10.times{ dataset.add_instance([1.0, Wikipedia::VandalismDetection::Instances::REGULAR]) }
+
+    classifier = Wikipedia::VandalismDetection::Classifier.new(dataset)
+    sample_count = ENV['SAMPLES']
+    sample_count = sample_count.to_i if sample_count
+
+    config = Wikipedia::VandalismDetection.configuration
+    classifier_name = config.classifier_type.split('::').last.downcase
+    subdir_name = "feature_analysis_#{config.training_data_options}"
+    path = File.join(config.output_base_directory, classifier_name, subdir_name, 'all')
+
+    FileUtils.mkdir_p(path) unless Dir.exists?(path)
+    analysis_bin_file = File.join(path, 'full_analysis_hash')
+
+    if File.exists?(analysis_bin_file)
+      puts "loading binary full analysis file"
+      analysis = Marshal.load(File.binread(analysis_bin_file))
+    else
+      analysis = classifier.evaluator.full_analysis(sample_count: sample_count)
+
+      File.open(analysis_bin_file,'wb') do |f|
+        f.write Marshal.dump(analysis)
+      end
+    end
+
+    # write absolute csv file
+    file_path = File.join(path, "full_feature_set.csv")
+
+    file = File.open(file_path, 'w')
+    header = ['Threshold', 'TP', 'TN', 'FP', 'FN'].join(',')
+    file.puts header
+
+    analysis.each do |threshold, values|
+      file.puts [threshold, values[:tp], values[:tn], values[:fp], values[:fn]].join(',')
+    end
+
+    file.close
+
+    # normalize data for TP/FN & TN/FP
+    # f1: {0.0 => ..., 0.1 => ...}
+    # f2: {0.0 => ..., 0.1 => ...}
+    # f3: {0.0 => ..., 0.1 => ...}
+
+    # find max(max(TP), max(FN)) -> devide all TP and FN
+    # find max(max(TN), max(FP)) -> devide all TN and FP
+
+    max_tp_fn = analysis.reduce(0.0) do |result, data|
+      max = [data[1][:tp], data[1][:fn]].max
+      result = (result < max) ? max.to_f : result
+    end
+
+    max_tn_fp = analysis.reduce(0.0) do |result, data|
+      max = [data[1][:tn], data[1][:fp]].max
+      result = (result < max) ? max.to_f : result
+    end
+
+    threshold_hash = analysis.map do |threshold, prediction_data|
+      tp = prediction_data[:tp] / max_tp_fn
+      fn = prediction_data[:fn] / max_tp_fn
+      tn = prediction_data[:tn] / max_tn_fp
+      fp = prediction_data[:fp] / max_tn_fp
+
+      [threshold, { tp: tp, fn: fn, tn: tn, fp: fp }]
+    end
+
+    normalized_analysis = Hash[threshold_hash]
+
+    # write normalized data to files
+    file_path = File.join(path, "normalized_full_feature_set.csv")
+
+    file = File.open(file_path, 'w')
+    header = ['Threshold', 'TP', 'TN', 'FP', 'FN'].join(',')
+    file.puts header
+
+    normalized_analysis.each do |threshold, values|
+      file.puts [threshold, values[:tp], values[:tn], values[:fp], values[:fn]].join(',')
+    end
+
+    file.close
+  end
+
+  # Creates a pdf plot for classifier with all configured features
+  #
+  # @example
+  #   rake classifier_analysis_plots
+  #
+  desc "Creates pdf plots for classifier/full features set analysis"
+  task :classifier_analysis_plots do
+    config = Wikipedia::VandalismDetection.configuration
+    classifier_name = config.classifier_type.split('::').last.downcase
+    subdir_name = "feature_analysis_#{config.training_data_options}"
+    output_path = File.join(config.output_base_directory, classifier_name, subdir_name, 'all')
+
+
+    FileUtils.mkdir_p(output_path) unless Dir.exists?(output_path)
+    Rake::Task['build:classifier_analysis'].invoke if (Dir[File.join(output_path, "*.csv")].count == 0)
+
+    # plotting curves
+    Dir[File.join(output_path, "*.csv")].each do |file|
+      plot_file = File.expand_path('../scripts/plot_feature_analysis', __FILE__)
+
+      puts "plotting data of '#{File.basename(file)}'"
+      feature_name = File.basename(file).gsub('.csv', '')
+      output_file_path = File.join(output_path, feature_name)
+
+      plot_title = "prediction analysis: #{feature_name.gsub('normalized_', '').gsub('_', ' ')} (#{classifier_name})"
+      x_label = 'Threshold'
+      y_label = (file =~ /normalized/) ? 'Number of instances (normalized to 1)' : 'Number of instances'
+
+      system "'#{plot_file}' '#{file}' '#{output_file_path}' '#{x_label}' '#{y_label}' '#{plot_title}'"
+    end
+
+    puts "done :)"
+  end
+
+  # Creates files with FN and FP edit data from classification file.
+  # The threshold can be set by using the T param for thr rake task.
+  #
+  # @example
+  #   rake build:edit_error_analysis T=0.7
+  #
+  desc "Creates files with FN and FP edit data from classification file"
+  task :edit_error_analysis do
+
   end
 end
 
