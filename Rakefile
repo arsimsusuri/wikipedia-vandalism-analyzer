@@ -405,14 +405,90 @@ namespace :build do
   end
 
   # Creates files with FN and FP edit data from classification file.
-  # The threshold can be set by using the T param for thr rake task.
+  # The threshold can be set by using the T param for the rake task.
   #
   # @example
   #   rake build:edit_error_analysis T=0.7
   #
   desc "Creates files with FN and FP edit data from classification file"
   task :edit_error_analysis do
+    config = Wikipedia::VandalismDetection.configuration
+    classification_file = config.test_output_classification_file
 
+    Rake::Task['build:classifier_analysis'].invoke unless File.exists?(classification_file)
+
+    threshold = ENV['T'] || 0.5
+
+    path = File.join(File.dirname(classification_file), 'edit_error_analysis')
+    FileUtils.mkdir_p(path) unless Dir.exists?(path)
+
+    fn_file_name = "fn_#{threshold}.csv"
+    fp_file_name = "fp_#{threshold}.csv"
+    fn_diff_file_name = "fn_#{threshold}-diffs.txt"
+    fp_diff_file_name = "fp_#{threshold}-diffs.txt"
+
+    fn_file = File.open(File.join(path, fn_file_name), 'w')
+    fp_file = File.open(File.join(path, fp_file_name), 'w')
+    fn_diff_file = File.open(File.join(path, fn_diff_file_name), 'w')
+    fp_diff_file = File.open(File.join(path, fp_diff_file_name), 'w')
+
+    puts "writing TP and FP edit data files..."
+
+    File.readlines(classification_file).each_with_index do |line, index|
+      line = line.split.join(',')
+
+      if index == 0
+        fn_file.puts line
+        fp_file.puts line
+        next
+      end
+
+      values = line.split(',')
+
+      old_id = values[0]
+      new_id = values[1]
+      target_class = values[2] # C column
+      confidence = values[3] # CONF column
+
+      is_fn = Wikipedia::VandalismDetection::Evaluator.false_negative?(target_class, confidence, threshold)
+      is_fp = Wikipedia::VandalismDetection::Evaluator.false_positive?(target_class, confidence, threshold)
+
+      if is_fn || is_fp
+        print "\rwriting inserted and removed text for (#{old_id}, #{new_id})..."
+
+        edit = Wikipedia::VandalismDetection::TestDataset.edit(old_id, new_id)
+        return unless edit
+
+        if is_fn
+          fn_file.puts line
+
+          fn_diff_file.puts "old rev id: #{old_id}, new rev id: #{new_id}\n"
+          fn_diff_file.puts "- comment: #{edit.new_revision.comment}"
+          fn_diff_file.puts "- inserted text:"
+          fn_diff_file.puts "#{edit.inserted_text}\n"
+          fn_diff_file.puts "- removed text:"
+          fn_diff_file.puts "#{edit.removed_text}\n\n"
+          fn_diff_file.puts "***********************************************************************\n\n"
+        elsif is_fp
+          fp_file.puts line
+
+          fp_diff_file.puts "old rev id: #{old_id}, new rev id: #{new_id}\n"
+          fp_diff_file.puts "- comment: #{edit.new_revision.comment}"
+          fp_diff_file.puts "- inserted text:"
+          fp_diff_file.puts "#{edit.inserted_text}\n"
+          fp_diff_file.puts "- removed text:"
+          fp_diff_file.puts "#{edit.removed_text}\n\n"
+          fp_diff_file.puts "***********************************************************************\n\n"
+        end
+      end
+    end
+
+    fn_file.close
+    fp_file.close
+    fn_diff_file.close
+    fp_diff_file.close
+
+    puts 'done'
   end
 end
 
