@@ -112,25 +112,18 @@ namespace :build do
     prc_file = File.open(File.join(sub_dir, prc_file_name), 'w')
     rocc_file = File.open(File.join(sub_dir, rocc_file_name), 'w')
 
-    sorted_prc = evaluator.sort_curve_values(recall_values, precision_values)
-    sorted_rocc = evaluator.sort_curve_values(fp_rate_values, recall_values)
-
     # write to prc file
     puts "writing #{prc_file_name}..."
-    prc_x = sorted_prc[:x]
-    prc_y = sorted_prc[:y]
 
-    prc_x.each_with_index do |x, index|
-      prc_file.puts [x, prc_y[index]].join(',')
+    recall_values.each_with_index do |x, index|
+      prc_file.puts [x, precision_values[index]].join(',')
     end
 
     # write to roc file
     puts "writing #{rocc_file_name}..."
-    rocc_x = sorted_rocc[:x]
-    rocc_y = sorted_rocc[:y]
 
-    rocc_x.each_with_index do |x, index|
-      rocc_file.puts [x, rocc_y[index]].join(',')
+    fp_rate_values.each_with_index do |x, index|
+      rocc_file.puts [x, recall_values[index]].join(',')
     end
 
     # close files
