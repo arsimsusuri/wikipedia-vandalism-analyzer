@@ -97,18 +97,15 @@ namespace :build do
     total_precision = performance_data[:total_precision].round(3)
 
     config = Wikipedia::VandalismDetection.configuration
-
-    classifier_type = config.classifier_type.split('::').last.downcase
-    training_type = config.training_data_options
-
-    sub_dir = File.join(config.output_base_directory, classifier_type, training_type)
+    sub_dir = File.dirname(config.test_output_classification_file)
     FileUtils.mkdir_p(sub_dir)
 
+    classifier_type = config.classifier_type.split('::').last.downcase
     prc_file_name = "#{classifier_type}-pr-#{pr_auc.to_s.gsub('.','')}_p#{total_precision.to_s.gsub('.','')}-r#{total_recall.to_s.gsub('.','')}.txt"
     rocc_file_name = "#{classifier_type}-roc-#{roc_auc.to_s.gsub('.','')}_p#{total_precision.to_s.gsub('.','')}-r#{total_recall.to_s.gsub('.','')}.txt"
 
     # open files
-    puts "working in #{config.output_base_directory}"
+    puts "working in #{sub_dir}"
     prc_file = File.open(File.join(sub_dir, prc_file_name), 'w')
     rocc_file = File.open(File.join(sub_dir, rocc_file_name), 'w')
 
@@ -145,7 +142,42 @@ namespace :build do
     rocc_plot_title = "ROC (#{classifier_type}) | AUC = #{roc_auc}"
     system "#{plot_file}  #{rocc_file_path} #{rocc_output_file} 'FP Rate' 'TP Rate' '#{rocc_plot_title}'"
 
-    puts "done :)"
+    puts "saving classification logs..."
+
+    vandalism_class_index = Wikipedia::VandalismDetection::Instances::VANDALISM_CLASS_INDEX
+    regular_class_index = Wikipedia::VandalismDetection::Instances::REGULAR_CLASS_INDEX
+
+    training_dataset = classifier.dataset
+
+    training_vandalism_count = training_dataset.enumerate_instances.reduce(0) do |count, instance|
+      count += 1 if (instance.class_value.to_i == vandalism_class_index)
+      count
+    end
+
+    training_regular_count = training_dataset.enumerate_instances.reduce(0) do |count, instance|
+      count += 1 if (instance.class_value.to_i == regular_class_index)
+      count
+    end
+
+    test_dataset = Core::Parser.parse_ARFF(config.test_output_arff_file)
+    test_dataset.class_index = config.features.count
+
+    log_file = File.join(sub_dir, 'classification.log')
+    File.open(log_file, 'w') do |f|
+      f.puts Time.now
+      f.puts "Training dataset:"
+      f.puts "\tall #{training_dataset.n_rows}"
+      f.puts "\tvandalism #{training_vandalism_count} (#{ ((100.0 * training_vandalism_count) / training_dataset.n_rows.to_f).round(2) } %)"
+      f.puts "\tregular #{training_regular_count} (#{ ((100.0 * training_regular_count) / training_dataset.n_rows.to_f).round(2) } %)"
+
+      f.puts "\nTest dataset:"
+      f.puts "\tall #{test_dataset.n_rows}"
+
+      f.puts "\nUsed configuration:\n"
+      f.puts config.data.to_s
+    end
+
+    puts "\ndone"
   end
 
   desc "Creates prediction value analysis files of all configured features for configured classifier."
