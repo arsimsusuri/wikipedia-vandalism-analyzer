@@ -1,3 +1,5 @@
+require 'wikipedia/vandalism_analyzer/exceptions'
+
 module Hadoop
   module Mapreduce
     module Lib
@@ -5,8 +7,9 @@ module Hadoop
         require 'java'
 
         begin
-          hadoop_core_jar = Dir["#{ENV["HADOOP_INSTALL"]}/hadoop-core-*.jar"].first
-          logging_jar = Dir["#{ENV["HADOOP_INSTALL"]}/lib/commons-logging-*.jar"].first
+          hadoop_path = ENV['PATH'].split(':').select { |path| path =~ /hadoop\-*/ }.first.gsub(/\/bin*/, '')
+          hadoop_core_jar = Dir[File.join(hadoop_path, "hadoop-core-*.jar")].first
+          logging_jar = Dir[File.join(hadoop_path, 'lib', "commons-logging-*.jar")].first
 
           require hadoop_core_jar
           require logging_jar
