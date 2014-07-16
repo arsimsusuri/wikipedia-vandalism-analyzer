@@ -8,6 +8,6 @@ describe Hadoop::Mapreduce::Lib::Input::XmlInputFormat do
 
   it "is an XMLInputformat from the Cloud9 lib" do
     class_type = Java::EduUmdCloud9Collection::XMLInputFormat
-    Hadoop::Mapreduce::Lib::Input::XmlInputFormat.ancestors[1].should == class_type
+    expect(Hadoop::Mapreduce::Lib::Input::XmlInputFormat.ancestors[1]).to be class_type
   end
 end
