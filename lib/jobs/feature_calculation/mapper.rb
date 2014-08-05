@@ -1,6 +1,12 @@
 require 'wikipedia/vandalism_detection'
+require 'jobs/conditions/page_ids'
+require 'saxerator'
+require "parallel"
 
 module FeatureCalculation
+
+  OUTPUT_PATH = 'features'
+
   class Mapper
 
     def initialize
@@ -12,13 +18,18 @@ module FeatureCalculation
     end
 
     def map(key, value, context)
-      page = @parser.parse value.to_s
+      page_id = Saxerator.parser(value.to_s).for_tag(:id).within(:page).first
+      return unless Conditions::PageIds.available?(page_id)
 
-      page.edits.each do |edit|
+      page = @parser.parse value.to_s
+      edits = page.edits
+
+      Parallel.each(edits) do |edit|
         features = @feature_calculator.calculate_features_for(edit)
 
         unless features.empty?
-          @key.set edit.new_revision.id
+          key_data = [page.id, edit.old_revision.id, edit.new_revision.id, page.title]
+          @key.set key_data.join(',')
           @value.set features.join(',')
 
           context.write @key, @value

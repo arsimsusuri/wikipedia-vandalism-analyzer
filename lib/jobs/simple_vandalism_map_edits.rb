@@ -1,13 +1,13 @@
 require 'hadoop/mapreduce/lib/input/xml_input_format'
-require 'jobs/feature_calculation/mapper'
+require 'jobs/simple_vandalism/mapper'
 require 'wikipedia/vandalism_detection/page'
 
 Rubydoop.configure do |input_path, output_path|
-  job 'WikipediaVandalism - Feature Calculation' do
+  job 'WikipediaVandalism - Simple Vandalism Edits (Map)' do
     input input_path, format: "Xml"
     output output_path
 
-    mapper FeatureCalculation::Mapper
+    mapper SimpleVandalism::Mapper
     raw { |job| job.set_num_reduce_tasks 0 }
 
     start_tag = Wikipedia::VandalismDetection::Page::START_TAG

@@ -1,14 +1,15 @@
 require 'hadoop/mapreduce/lib/input/xml_input_format'
-require 'jobs/feature_calculation/mapper'
+require 'jobs/simple_vandalism/mapper'
+require 'jobs/simple_vandalism/reducer'
 require 'wikipedia/vandalism_detection/page'
 
 Rubydoop.configure do |input_path, output_path|
-  job 'WikipediaVandalism - Feature Calculation' do
+  job 'WikipediaVandalism - Simple Vandalism Count per Page (MapRed)' do
     input input_path, format: "Xml"
     output output_path
 
-    mapper FeatureCalculation::Mapper
-    raw { |job| job.set_num_reduce_tasks 0 }
+    mapper SimpleVandalism::Mapper
+    reducer SimpleVandalism::Reducer
 
     start_tag = Wikipedia::VandalismDetection::Page::START_TAG
     end_tag = Wikipedia::VandalismDetection::Page::END_TAG
@@ -17,6 +18,7 @@ Rubydoop.configure do |input_path, output_path|
     set Hadoop::Mapreduce::Lib::Input::XmlInputFormat::END_TAG_KEY, end_tag
 
     output_key Hadoop::Io::Text
-    output_value Hadoop::Io::Text
+    map_output_value Hadoop::Io::Text
+    output_value Hadoop::Io::IntWritable
   end
 end

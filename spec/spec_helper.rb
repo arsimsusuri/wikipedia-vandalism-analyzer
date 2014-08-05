@@ -12,6 +12,6 @@ RSpec.configure do |config|
   lib_file = File.expand_path('../../lib/wikipedia/vandalism_analyzer', __FILE__)
   require lib_file
 
-  dirs = ["../support/**/"]
+  dirs = ["../support/**/", "../../lib/jobs/*/"]
   require_files_from dirs
 end
