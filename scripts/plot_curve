@@ -8,7 +8,7 @@
 # $5 - plot title
 
 gnuplot << EOF
-set term postscript portrait
+set term postscript portrait enhanced color
 set output "$2.ps"
 
 set xlabel "$3"
