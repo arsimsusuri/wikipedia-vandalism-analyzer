@@ -2,7 +2,7 @@ require 'spec_helper'
 
 describe Hadoop::Mapreduce::Lib::Input::XmlInputFormat do
 
-  it "is can be used" do
+  it "can be required without errors" do
     expect { require 'hadoop/mapreduce/lib/input/xml_input_format' }.not_to raise_error
   end
 
