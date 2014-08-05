@@ -29,16 +29,25 @@ task :package do
 
   File.delete(jar_file) if File.exists?(jar_file)
 
+  src_path = File.expand_path("../data", __FILE__)
+  dest_path = File.expand_path("../lib", __FILE__)
+
   begin
-    puts "packaging into #{File.dirname(__FILE__)}/build/#{jar_file} ..."
+    print "\ncopying needed files..."
+    FileUtils.cp_r(src_path, dest_path)
+    print "done"
+
+    puts "\npackaging into #{File.dirname(__FILE__)}/build/#{jar_file} ..."
 
     job_package = Rubydoop::Package.new(project_name: jar_name, lib_jars: jars)
     job_package.create!
   rescue => e
     puts "Error while packaging:\n #{e.message}"
+  ensure
+    FileUtils.rm_r(File.join(dest_path, 'data'))
   end
 
-  puts 'Done.'
+  puts 'done'
 end
 
 namespace :build do
@@ -58,7 +67,7 @@ namespace :build do
   #  rake build:training_features
   desc "Builds the configured features for the configured training data set. See conf/config.yml!"
   task :training_features do
-    Wikipedia::VandalismDetection::TrainingDataset.build!
+    Wikipedia::VandalismDetection::TrainingDataset.build
   end
 
   # Creates the configured features for the configured test corpus
@@ -67,7 +76,7 @@ namespace :build do
   #  rake build:test_features
   desc "Builds the configured features for the configured test data set. See conf/config.yml!"
   task :test_features do
-    Wikipedia::VandalismDetection::TestDataset.build!
+    Wikipedia::VandalismDetection::TestDataset.build
   end
 
   # Creates PRC data for the configured classifier on the configured dataset
@@ -99,6 +108,9 @@ namespace :build do
     config = Wikipedia::VandalismDetection.configuration
     sub_dir = File.dirname(config.test_output_classification_file)
     FileUtils.mkdir_p(sub_dir)
+
+    # save training dataset
+    classifier.dataset.to_ARFF(config.training_output_arff_file)
 
     classifier_type = config.classifier_type.split('::').last.downcase
     prc_file_name = "#{classifier_type}-pr-#{pr_auc.to_s.gsub('.','')}_p#{total_precision.to_s.gsub('.','')}-r#{total_recall.to_s.gsub('.','')}.txt"
