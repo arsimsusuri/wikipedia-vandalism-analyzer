@@ -43,8 +43,10 @@ module SimpleVandalism
         end
       end
 
+      edits = page.edits
+
       # write 'regular' edits
-      Parallel.each(page.edits) do |edit|
+      Parallel.each(edits) do |edit|
         sha1_hash = :"#{edit.old_revision.sha1}-#{edit.new_revision.sha1}"
 
         unless reverted_sha1s.include?(sha1_hash)
