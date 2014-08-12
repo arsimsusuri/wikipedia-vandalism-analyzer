@@ -1,7 +1,7 @@
 require 'wikipedia/vandalism_detection'
 require 'jobs/conditions/page_ids'
 require 'saxerator'
-require 'benchmark'
+require 'parallel'
 
 module SimpleVandalism
 
@@ -11,6 +11,7 @@ module SimpleVandalism
       @key = Hadoop::Io::Text.new
       @value = Hadoop::Io::Text.new
       @parser = Wikipedia::VandalismDetection::PageParser.new
+      @feature_calculator = Wikipedia::VandalismDetection::FeatureCalculator.new
     end
 
     # context written key: 'page id, page title'
@@ -21,20 +22,39 @@ module SimpleVandalism
       return unless Conditions::PageIds.available?(page_id)
 
       page = @parser.parse(value.to_s)
-
-      edits = page.reverted_edits
       @key.set [page.id, page.title, page.revisions.count].join(',')
 
-      if edits.count > 0
-        edits.each do |edit|
-          edit_info = [edit.old_revision.id, edit.new_revision.id]
+      reverted_sha1s = {}
+      v = Wikipedia::VandalismDetection::Instances::VANDALISM_SHORT
+      r = Wikipedia::VandalismDetection::Instances::REGULAR_SHORT
+
+      reverted_edits = page.reverted_edits
+
+      # write 'simple vandalism' edits
+      if reverted_edits.count > 0
+        Parallel.each(reverted_edits) do |edit|
+          features = @feature_calculator.calculate_features_for(edit)
+          reverted_sha1s[:"#{edit.old_revision.sha1}-#{edit.new_revision.sha1}"] = :v
+
+          edit_info = [edit.old_revision.id, edit.new_revision.id, v, *features]
 
           @value.set edit_info.join(',')
           context.write(@key, @value)
         end
-      else
-        @value.set ""
-        context.write(@key, @value)
+      end
+
+      # write 'regular' edits
+      Parallel.each(page.edits) do |edit|
+        sha1_hash = :"#{edit.old_revision.sha1}-#{edit.new_revision.sha1}"
+
+        unless reverted_sha1s.include?(sha1_hash)
+          features = @feature_calculator.calculate_features_for(edit)
+
+          edit_info = [edit.old_revision.id, edit.new_revision.id, r, *features]
+
+          @value.set edit_info.join(',')
+          context.write(@key, @value)
+        end
       end
     end
   end
