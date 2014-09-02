@@ -1,6 +1,7 @@
 require 'bundler/setup'
 require 'rubydoop/package'
 require 'wikipedia/vandalism_detection'
+require_relative './lib/wikipedia/vandalism_analyzer/arff_file_creator'
 require 'csv'
 require 'fileutils'
 
@@ -79,6 +80,43 @@ namespace :build do
     Wikipedia::VandalismDetection::TestDataset.build
   end
 
+  # Creates the configured training corpus
+  #
+  # @example
+  #   rake build:training_corpus FILE=/home/user1/datasets/training.arff
+  #
+  desc "Builds the configured training corpus. See conf/config.yml!"
+  task :training_corpus do
+    file = ENV['FILE'] || File.expand_path("../build/training-data.arff", __FILE__)
+    config = Wikipedia::VandalismDetection.configuration
+
+    if config.balanced_training_data?
+      puts "building BALANCED training dataset"
+      dataset = Wikipedia::VandalismDetection::TrainingDataset.balanced_instances
+    elsif config.unbalanced_training_data?
+      puts "building FULL (unbalanced) training dataset"
+      dataset = Wikipedia::VandalismDetection::TrainingDataset.instances
+    elsif config.oversampled_training_data?
+      puts "building OVERSAMPLED training dataset"
+      dataset = Wikipedia::VandalismDetection::TrainingDataset.oversampled_instances
+    end
+
+    dataset.to_ARFF(file)
+  end
+
+  # Creates the configured test corpus
+  #
+  # @example
+  #  rake build:test_corpus FILE=/home/user1/dataset/test.arff
+  #
+  desc "Builds the configured test corpus. See conf/config.yml!"
+  task :test_corpus do
+    file = ENV['FILE'] || File.expand_path("../build/test-data.arff", __FILE__)
+    dataset = Wikipedia::VandalismDetection::TestDataset.build
+
+    dataset.to_ARFF(file)
+  end
+
   # Creates PRC data for the configured classifier on the configured dataset
   #
   # @example
@@ -148,7 +186,7 @@ namespace :build do
     prc_plot_title = "PR (#{classifier_type}) | AUC = #{pr_auc}, Precision = #{total_precision}, Recall = #{total_recall}"
     system "#{plot_file} #{prc_file_path} #{prc_output_file} Recall Precision '#{prc_plot_title}'"
 
-    puts "plotting RO curve..."
+    puts "plotting ROC curve..."
     rocc_file_path = File.join(sub_dir, rocc_file_name)
     rocc_output_file = File.join(sub_dir, rocc_file_name.gsub('.txt', ''))
     rocc_plot_title = "ROC (#{classifier_type}) | AUC = #{roc_auc}"
@@ -527,6 +565,76 @@ namespace :build do
 
     puts 'done'
   end
+
+  desc "Creates arff files from the resulting files of 'jobs/simple_vandalism_feature_calculation'."
+  task :arff_files_from_job_results do
+    src_dir = ENV['INPUT_DIR'] || raise(ArgumentError, "Please define a file to convert as first parameter:\nINPUT_DIR=/src-file/part-m-00000")
+    dst_dir = ENV['OUTPUT_DIR'] || raise(ArgumentError, "Please define the dest dir as second parameter:\n OUTPUT_DIR=/src-file//dest-dir/")
+
+    FileUtils.mkdir_p(dst_dir)
+
+    @info_file = File.open(File.join(dst_dir, 'article-info.csv'), 'w')
+    @info_file.puts "page_id,simple_vandalism_count,regular_count"
+
+    src_files = Dir[File.join(src_dir, '*')].select { |f| f =~ /(part-.-\d+$)/}
+
+    @creator = nil
+    @skipped_file = false
+    @written_headers = {}
+    @arff_info = {}
+
+    src_files.each_with_index do |src_file_path, file_index|
+      begin
+        new_page = true
+        previous_page_id = nil
+
+        lines = File.read(src_file_path).lines
+
+        lines.each_with_index do |line, index|
+          data = line.split("\t")
+          current_page_id = data[0]
+
+          new_page = !(previous_page_id && current_page_id == previous_page_id)
+          print "\r processed #{ ((100.0 * (file_index + 1)) / src_files.count).round(1) }%" if new_page
+
+          if (@creator && new_page && !@skipped_file) || index == lines.count - 1
+            vandalism =
+            @arff_info[current_page_id]
+          end
+
+          title = current_page_id
+
+          if title !~ /(talk:|category:)/i # only articles
+            if new_page
+              arff = File.open(File.join(dst_dir, "page-#{current_page_id}.arff"), 'a')
+              @creator = ArffCreator.new(arff)
+
+              if !@written_headers[current_page_id]
+                @creator.write_header(data)
+                @written_headers[current_page_id] = true
+                @arff_info[current_page_id] = { v: 0, r: 0 }
+              else
+                @creator.page_info = data[0]
+              end
+            end
+
+            @creator.write_data(data[1])
+            @skipped_file = false
+          else
+            @skipped_file = true
+          end
+
+          previous_page_id = current_page_id
+        end
+      rescue => e
+        puts "Error: file '#{File.basename(src_file_path)}' cannot be converted.\n#{e}"
+        next
+      end
+    end
+
+    @info_file.close
+  end
+
 end
 
 # Evaluates the configured classifier on the configured dataset
@@ -582,5 +690,78 @@ task :classify do
   page.edits.each do |edit|
     label = classifier.classify(edit)
     puts "#revision: #{edit.new_revision.id} is #{label}"
+  end
+end
+
+desc "Classifies a full arff and saves the features with the calculated confidence to a defined file."
+task :classify_arff do
+  training_file = ENV['TRAINING_FILE'] || raise(ArgumentError, "Please define an TRAINING_FILE parameter.")
+  input_dir = ENV['INPUT_DIR'] || raise(ArgumentError, "Please define an INPUT_DIR parameter.")
+  output_dir = ENV['OUTPUT_DIR'] || raise(ArgumentError, "Please define an OUTPUT_DIR parameter.")
+
+  raise "Training file #{training_file} not found." unless File.exist?(training_file)
+  raise "Input dir #{input_dir} not found." unless Dir.exist?(input_dir)
+
+  arff_files = Dir[File.join(input_dir, "*.arff")]
+  raise "No .arff files available in #{input_dir}." if arff_files.empty?
+
+  training_dataset = Core::Parser::parse_ARFF(training_file)
+  training_dataset.class_index = training_dataset.n_col - 1
+  classifier = Wikipedia::VandalismDetection::Classifier.new(training_dataset)
+
+  FileUtils.mkdir_p(output_dir) unless Dir.exists?(output_dir)
+
+  arff_files.each_with_index do |input_file, current_file_index|
+    test_dataset = Core::Parser::parse_ARFF(input_file)
+    instances_count = test_dataset.n_rows
+
+    output_file = File.join(output_dir, 'classification-' + File.basename(input_file).gsub('arff', 'txt'))
+    puts "\nprocessing file #{current_file_index + 1 }/#{arff_files.count} (#{File.basename(input_file)})..."
+
+    File.open(output_file, 'w') do |file|
+      test_dataset.to_a2d.each_with_index do |instance, index|
+        features = instance[0...-1]
+
+        confidence = classifier.classify(features).round(6)
+        data = [*(instance.map { |i| i.to_f.nan? ? '?' : i }), confidence].join(',')
+
+        file.puts data
+
+        print "\r classifying #{((100.0 * index + 1) / instances_count).ceil.to_i} %\t"
+      end
+    end
+  end
+
+  puts "done"
+end
+
+desc "Collects vandalism feature values with a threshold > T and saves them to the ouput file"
+task :collect_vandalism_features do
+  threshold = ENV['T'].to_f || ENV['THRESHOLD'].to_f || raise(ArgumentError, "Please define a THRESHOLD (or T) parameter.")
+  input_file = ENV['INPUT_FILE'] || raise(ArgumentError, "Please define an INPUT_FILE parameter.")
+  output_file = ENV['OUTPUT_FILE'] || raise(ArgumentError, "Please define an OUTPUT_FILE parameter.")
+
+  file_split = File.basename(output_file).split('.')
+  output_file = File.join(File.dirname(output_file), file_split.first + "-#{threshold}." + file_split.last)
+
+  raise "Input file #{input_file} not found." unless File.exist?(input_file)
+  raise(ArgumentError, "THRESHOLD must be a value between 0.0 and 1.0") if threshold < 0.0 || threshold > 1.0
+
+  File.open(output_file, 'w') do |output|
+    input_lines = File.readlines(input_file)
+
+    input_lines.each_with_index do |line, index|
+      data = line.split(',')
+      confidence = data.last.to_f
+      class_value = data[-2]
+
+      print "\r processing... #{((100.0 * index + 1) / input_lines.count).ceil.to_i} %\t"
+
+      if class_value == Wikipedia::VandalismDetection::Instances::VANDALISM && confidence >= threshold
+        output.puts [*data[0...-2], 'vandalism'].join(',')
+      end
+    end
+
+    print "done\n"
   end
 end
