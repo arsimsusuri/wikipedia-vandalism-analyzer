@@ -13,8 +13,14 @@ Make sure you:
 To install Gem dependencies execute:
 
     $ bundle install
+    
+Since the used ruby-band gem saves its required jar files to a global directory, these jars are not available when packaging 
+the `wikipedia-vandalism-analyzer.jar` which is used to run hadoop jobs. Thus, we use a modified version of the gem 
+(see [https://github.com/paulgoetze/ruby-band/tree/develop](https://github.com/paulgoetze/ruby-band/tree/develop)). To include the needed jar files, 
+make sure to go to the gems installation directory and run `rake install`.  
+This will create a `jars` directory in the gem's `lib/` directory comprising all needed jars.
 
-Add JRuby options for the Java garbage collector and used memory to prevent OutOfMemory exceptions:
+In case of heap errors, try adding JRuby options for the Java garbage collector and used memory to prevent OutOfMemory exceptions:
 
     $ export JRUBY_OPTS="-J-XX:+CMSClassUnloadingEnabled -J-XX:+UseConcMarkSweepGC -J-Xmx2048m"
 
