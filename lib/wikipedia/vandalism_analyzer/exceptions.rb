@@ -4,7 +4,7 @@ module Wikipedia
     # @abstract Exceptions raised by Wikipedia::VandalismAnalyzer inherit from this Error
     class Error < StandardError; end
 
-    # Exception is raised when the $HADOOP_INSTALL system path is not set
+    # Exception is raised when the $PATH env variable does not include the hadoop install path
     class HadoopNotFoundError < Error; end
   end
 end

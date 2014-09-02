@@ -7,7 +7,8 @@ module Hadoop
         require 'java'
 
         begin
-          hadoop_path = ENV['PATH'].split(':').select { |path| path =~ /hadoop\-*/ }.first.gsub(/\/bin*/, '')
+          #hadoop_path = ENV['PATH'].split(':').select { |path| path =~ /hadoop\-*/ }.first.gsub(/\/bin*/, '')
+          hadoop_path = "/opt/hadoop-1.2.1"
           hadoop_core_jar = Dir[File.join(hadoop_path, "hadoop-core-*.jar")].first
           logging_jar = Dir[File.join(hadoop_path, 'lib', "commons-logging-*.jar")].first
 
@@ -16,10 +17,10 @@ module Hadoop
         rescue
           message = %Q{
             Hadoop could not be found.
-            Ensure that the $HADOOP_INSTALL system variable is set to your hadoop installation directory.
+            Ensure that the $PATH environment variable includes your hadoop installation directory.
           }
 
-          raise HadoopNotFoundError, message
+          raise Wikipedia::VandalismAnalyzer::HadoopNotFoundError, message
         end
 
         require 'java/cloud9-wikipedia.jar'

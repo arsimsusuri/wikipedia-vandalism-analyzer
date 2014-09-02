@@ -2,8 +2,10 @@ require 'hadoop/mapreduce/lib/input/xml_input_format'
 require 'jobs/simple_vandalism/mapper'
 require 'wikipedia/vandalism_detection/page'
 
+# Job for extracting edits from stub meta history, tagged by simple vandalism (R or V).
+# Input file is wikipedia stub-meta-history.xml.
 Rubydoop.configure do |input_path, output_path|
-  job 'WikipediaVandalism - Simple Vandalism Edits (Map)' do
+  job 'WVD - Simple vandalism extract edits' do
     input input_path, format: "Xml"
     output output_path
 
