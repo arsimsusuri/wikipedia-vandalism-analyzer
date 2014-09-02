@@ -6,7 +6,7 @@ Rubydoop Jobs and offline scripts for Wikipedia Vandalism Detection and Analyzin
 
 Make sure you:
 
-* have the R-programming language installed (since the systems uses the rinruby-gem for plotting PR-curves)
+* have gnuplot installed (since the systems uses the gnuplot for plotting curves)
 * are using JRuby >= 1.7.10
 * have Hadoop installed and added the installation directory to the `HADOOP_INSTALL` system path variable
 
@@ -23,7 +23,8 @@ Add JRuby options for the Java garbage collector and used memory to prevent OutO
 ### Configuration
 
 Put a `config.yml` file to `config/` or `lib/config/` directory.
-For further configuration options see part *Configuration* in `wikipedia-vandalism_detection` gem README.md!
+For further configuration options see part *Configuration* in 
+[`wikipedia-vandalism_detection`](https://github.com/webis-de/wikipedia-vandalism-detection) gem README.md!
 
 An example config file content could be:
 
@@ -118,7 +119,17 @@ prediction data. This task runs the `build:feature_analysis` task if the data is
 Available jobs are:
 
 * feature_calculation
-* classification
+* classification_with_existing_features (needs the data of the feature_calculation job)
+* full_classification (first two jobs combined in one)
+* simple_vandalism_features_calculation_map
+* simple_vandalism_features_calculation_red
+* simple_vandalism_features_calculation (the two jobs above combined in one)
+* simple_vandalism_mapred_count_per_page
+* simple_vandalism_red_count_per_page
+* simple_vandalism_extract_edits (the two above jobs combined in one)
+
+The `simple_vandalism_features_...` jobs run on a revision basis (one revision tag xml content per map).  
+The last three `simple_vandalism_...` jobs run on a full page basis (High heap memory use!).
 
 Running a job:
 
@@ -127,12 +138,12 @@ Running a job:
 Example:
     
     $ cd build
-    $ haddop jar wikipedia-vandalism-analyzer.jar jobs/feature_calculation Wikipedia-history-dump.bz2 ~/rubydoop/features
-    $ haddop jar wikipedia-vandalism-analyzer.jar jobs/classification ~/rubydoop/features ~/rubydoop/classification
+    $ haddop jar wikipedia-vandalism-analyzer.jar jobs/feature_calculation Wikipedia-history-dump.bz2 ~/results/features
+    $ haddop jar wikipedia-vandalism-analyzer.jar jobs/classification ~/rubydoop/features ~/results/classification
 
 ## Contributing
 
-1. Fork it ( http://github.com/<my-github-username>/wikipedia-vandalism_analyzer/fork )
+1. Fork it ( http://github.com/webis-de/wikipedia-vandalism-analyzer/fork )
 2. Create your feature branch (`git checkout -b my-new-feature`)
 3. Commit your changes (`git commit -am 'Add some feature'`)
 4. Push to the branch (`git push origin my-new-feature`)
